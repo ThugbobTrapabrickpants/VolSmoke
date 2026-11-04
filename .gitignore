@@ -1,0 +1,20 @@
+# Native build outputs
+/native/build/
+/native/out/
+*.obj
+*.o
+*.dll
+*.addon
+*.pdb
+*.ilk
+
+# Local editor and OS files
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# BeamNG runtime data
+mod/settings/
+*.log

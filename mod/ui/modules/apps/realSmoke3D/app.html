@@ -1,0 +1,1534 @@
+<div class="real-smoke3d-container"
+     ng-class="{'is-collapsed': isCollapsed, 'is-expanded': !isCollapsed}">
+  <link rel="stylesheet" href="/ui/modules/apps/realSmoke3D/app.css">
+
+  <!-- Header (Pinned at top, visible both when collapsed and expanded) -->
+  <div class="rs-header">
+    <div class="rs-header-title">
+      <div class="rs-brand-title">
+        <span class="rs-brand-name">VolSmoke</span>
+        <span class="rs-brand-author">open source</span>
+      </div>
+      <span class="rs-badge-ver">v0.8.12.9</span>
+      <!-- VolSmoke baseline v0.8.12.9 -->
+    </div>
+    <div class="rs-header-actions">
+      <button type="button" class="rs-btn-lang" ng-click="toggleLang()" title="{{t('toggleLang')}}">
+        {{lang.toUpperCase()}}
+      </button>
+      <button type="button" class="rs-btn-icon" ng-click="toggleCollapse()" title="{{isCollapsed ? t('expand') : t('collapse')}}" aria-label="{{isCollapsed ? t('expand') : t('collapse')}}">
+        <span ng-if="isCollapsed">+</span>
+        <span ng-if="!isCollapsed">&minus;</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Diagnostics Engine Status Banner -->
+  <div class="rs-diag-bar"
+       ng-class="{'rs-diag-ok': diagStatus === 'OK', 'rs-diag-warn': diagStatus === 'CONNECTING', 'rs-diag-err': diagStatus === 'FAULT'}"
+       ng-click="diagStatus === 'FAULT' && toggleDiagDetails()"
+       title="{{getDiagTooltip()}}">
+    <div class="rs-diag-bar-left">
+      <span class="rs-diag-dot"></span>
+      <span class="rs-diag-text" ng-if="diagStatus === 'OK'">{{t('diagEngineOk')}} ({{diagApiLabel || diagApi}})</span>
+      <span class="rs-diag-text" ng-if="diagStatus === 'CONNECTING'">{{t('diagEngineConnecting')}}</span>
+      <span class="rs-diag-text" ng-if="diagStatus === 'FAULT'">{{t('diagEngineFault')}}: {{diagCode}}</span>
+    </div>
+    <span class="rs-diag-badge-err" ng-if="diagStatus === 'FAULT'">{{showDiagDetails ? '▲' : '▼'}}</span>
+  </div>
+
+  <!-- Prominent Diagnostic Alert Card (Auto-expanded on FAULT) -->
+  <div class="rs-diag-alert-card" ng-if="diagStatus === 'FAULT' && showDiagDetails">
+    <div class="rs-diag-alert-header">
+      <span class="rs-diag-alert-badge">{{t('diagErrorBadge')}}</span>
+      <span class="rs-diag-alert-code">{{diagCode}}</span>
+    </div>
+    <div class="rs-diag-alert-title">{{t('diagTitle_' + diagCode)}}</div>
+    <div class="rs-diag-alert-msg">{{t('diagMsg_' + diagCode)}}</div>
+    <div class="rs-diag-path-box" ng-if="conflictingAddon && (diagCode === 'ERROR_UI_LAYER_DESYNC' || diagCode === 'ERROR_DEPTH_BUFFER_OFFLINE' || diagCode === 'ERROR_HDR_LAYER_CONFLICT')">
+      <span class="rs-diag-path-label">{{lang === 'ru' ? 'Конфликтующий ReShade аддон в Bin64:' : 'Conflicting ReShade add-on in Bin64:'}}</span>
+      <span class="rs-diag-path-val">{{conflictingAddon}}</span>
+    </div>
+    <div class="rs-diag-alert-fix-wrap">
+      <div class="rs-diag-alert-fix-title">{{t('diagFixTitle')}}</div>
+      <div class="rs-diag-alert-fix">{{t('diagFix_' + diagCode)}}</div>
+    </div>
+  </div>
+
+  <!-- Particle Conflict Warning Notice (Displayed only when suppression failed / unsuppressed) -->
+  <div class="rs-warn-notice" ng-if="particleConflict && !particleSuppressed && diagStatus === 'OK'">
+    <div class="rs-warn-notice-header">
+      <span class="rs-warn-notice-icon">⚠️</span>
+      <span class="rs-warn-notice-title">{{t('particleConflictTitle')}}</span>
+    </div>
+    <div class="rs-warn-notice-msg">
+      {{t('particleConflictMsg')}} <strong class="rs-conflict-mod-name">{{particleConflictMod || 'unknown'}}</strong>
+    </div>
+  </div>
+
+  <!-- Preset Selector & Manager Bar (Visible when expanded) -->
+  <div class="rs-preset-bar" ng-show="!isCollapsed">
+    <!-- Click-outside backdrop to dismiss dropdown cleanly -->
+    <div class="rs-dropdown-backdrop" ng-if="isPresetDropdownOpen" ng-click="closePresetDropdown()"></div>
+
+    <div class="rs-preset-main">
+      <div class="rs-preset-dropdown-trigger" ng-click="togglePresetDropdown($event)" title="{{t('presetTitle')}}">
+        <span class="rs-preset-icon">⚡</span>
+        <span class="rs-preset-active-label">{{getActivePresetName()}}</span>
+        <span class="rs-preset-chevron">{{isPresetDropdownOpen ? '▲' : '▼'}}</span>
+        <span class="rs-preset-counter">({{presets.length}}/10)</span>
+      </div>
+
+      <div class="rs-preset-actions">
+        <button type="button" class="rs-btn-preset-action rs-has-tooltip" ng-click="duplicatePreset($event)"
+                ng-disabled="presets.length >= 10">
+          <svg class="rs-icon-svg" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5.5 2H14V13H11" />
+            <rect x="2" y="4.5" width="8.5" height="10" rx="0.5" />
+            <line x1="6.25" y1="7" x2="6.25" y2="12" />
+            <line x1="3.75" y1="9.5" x2="8.75" y2="9.5" />
+          </svg>
+          <span class="rs-delayed-tooltip">{{presets.length >= 10 ? t('presetLimitNotice') : t('presetDuplicateWord')}}</span>
+        </button>
+        <button type="button" class="rs-btn-preset-action rs-has-tooltip" ng-click="createPreset($event)"
+                ng-disabled="presets.length >= 10">
+          <svg class="rs-icon-svg" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <line x1="8" y1="3" x2="8" y2="13" />
+            <line x1="3" y1="8" x2="13" y2="8" />
+          </svg>
+          <span class="rs-delayed-tooltip">{{presets.length >= 10 ? t('presetLimitNotice') : t('presetAddWord')}}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Dropdown Menu -->
+    <div class="rs-preset-dropdown-menu" ng-if="isPresetDropdownOpen">
+      <!-- Default Immutable Preset -->
+      <div class="rs-preset-item" ng-class="{'is-active': activePresetId === 'default'}"
+           ng-click="selectPreset('default')">
+        <span class="rs-preset-item-star">★</span>
+        <span class="rs-preset-item-name">{{t('presetDefault')}}</span>
+        <span class="rs-preset-item-badge">ORIGINAL</span>
+      </div>
+
+      <!-- User Presets -->
+      <div class="rs-preset-item" ng-repeat="p in presets track by p.id"
+           ng-class="{'is-active': activePresetId === p.id}"
+           ng-click="editingPresetId !== p.id && selectPreset(p.id)">
+        <!-- Edit mode -->
+        <div class="rs-preset-edit-wrap" ng-if="editingPresetId === p.id" ng-click="$event.stopPropagation()">
+          <input id="rs-preset-input-{{p.id}}" type="text"
+                 ng-model="p.name"
+                 ng-blur="finishRenaming(p, p.name)"
+                 ng-keydown="onRenameKeydown($event, p)"
+                 ng-keyup="$event.stopPropagation()"
+                 class="rs-preset-rename-input"
+                 maxlength="24"
+                 placeholder="{{t('presetNamePlaceholder')}}">
+        </div>
+
+        <!-- Normal mode -->
+        <span class="rs-preset-item-bullet" ng-if="editingPresetId !== p.id">📁</span>
+        <span class="rs-preset-item-name" ng-if="editingPresetId !== p.id">{{p.name}}</span>
+
+        <div class="rs-preset-item-tools" ng-if="editingPresetId !== p.id" ng-click="$event.stopPropagation()">
+          <button type="button" class="rs-preset-tool-btn" ng-click="startRenaming(p.id, $event)" title="{{t('presetRenameWord')}}">✎</button>
+          <button type="button" class="rs-preset-tool-btn is-delete" ng-click="deletePreset(p.id, $event)" title="{{t('presetDeleteWord')}}">&times;</button>
+        </div>
+      </div>
+
+      <!-- Add New Button Inside Dropdown -->
+      <div class="rs-preset-dropdown-footer">
+        <button type="button" class="rs-preset-add-footer-btn" ng-click="createPreset($event)" ng-if="presets.length < 10">
+          + {{t('presetAddBtn')}}
+        </button>
+        <span class="rs-preset-limit-label" ng-if="presets.length >= 10">
+          {{t('presetLimitReached')}}
+        </span>
+      </div>
+    </div>
+
+    <!-- Sandbox Mode Banner at 10/10 capacity -->
+    <div class="rs-sandbox-banner" ng-if="showSandboxNotice">
+      {{t('presetSandboxNotice')}}
+    </div>
+  </div>
+
+  <!-- Scrollable Content Container (only when expanded) -->
+  <div class="rs-content-scroll" ng-show="!isCollapsed">
+    <!-- Section 1: Telemetry & Wheels (Collapsible) -->
+    <div class="rs-accordion-card">
+      <div class="rs-accordion-header" ng-click="toggleSection('telemetry')">
+        <div class="rs-accordion-title-wrap">
+          <span class="rs-accordion-chevron" ng-class="{'is-expanded': sections.telemetry}">▸</span>
+          <span class="rs-accordion-title" style="color: #00e5ff;">{{t('sectionTelemetry')}}</span>
+        </div>
+        <span style="font-size: 8.5px; color: #ffaa00; font-weight: bold;">{{totalEmission * 100 | number:0}}%</span>
+      </div>
+      <div class="rs-accordion-body" ng-show="sections.telemetry">
+        <!-- 4 Wheels Telemetry Visualizer -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 5px;">
+          <div style="background: rgba(255,255,255,0.06); padding: 3px 5px; border-radius: 4px;">
+            <div style="font-size: 8.5px; color: #aaa;">{{t('wheelFL')}}</div>
+            <div style="font-size: 11px; font-weight: bold; color: {{getTempColor(flTemp)}};">{{flTemp | number:0}}°C</div>
+            <div style="font-size: 8.5px; color: #888;">{{t('slip')}}: {{flSlip | number:1}} m/s</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.06); padding: 3px 5px; border-radius: 4px;">
+            <div style="font-size: 8.5px; color: #aaa;">{{t('wheelFR')}}</div>
+            <div style="font-size: 11px; font-weight: bold; color: {{getTempColor(frTemp)}};">{{frTemp | number:0}}°C</div>
+            <div style="font-size: 8.5px; color: #888;">{{t('slip')}}: {{frSlip | number:1}} m/s</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.06); padding: 3px 5px; border-radius: 4px;">
+            <div style="font-size: 8.5px; color: #aaa;">{{t('wheelRL')}}</div>
+            <div style="font-size: 11px; font-weight: bold; color: {{getTempColor(rlTemp)}};">{{rlTemp | number:0}}°C</div>
+            <div style="font-size: 8.5px; color: #888;">{{t('slip')}}: {{rlSlip | number:1}} m/s</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.06); padding: 3px 5px; border-radius: 4px;">
+            <div style="font-size: 8.5px; color: #aaa;">{{t('wheelRR')}}</div>
+            <div style="font-size: 11px; font-weight: bold; color: {{getTempColor(rrTemp)}};">{{rrTemp | number:0}}°C</div>
+            <div style="font-size: 8.5px; color: #888;">{{t('slip')}}: {{rrSlip | number:1}} m/s</div>
+          </div>
+        </div>
+
+        <!-- Emission Gauge -->
+        <div>
+          <div style="display: flex; justify-content: space-between; font-size: 9.5px; margin-bottom: 2px;">
+            <span>{{t('smokeGenRate')}}</span>
+            <span style="color: #ffaa00; font-weight: bold;">{{totalEmission * 100 | number:0}}%</span>
+          </div>
+          <div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+            <div style="height: 100%; width: {{totalEmission * 100}}%; background: linear-gradient(90deg, #ff7700, #ff0044); transition: width 0.1s;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 2: Smoke Emission Equity (Collapsible) -->
+    <div class="rs-accordion-card card-equity">
+      <div class="rs-accordion-header" ng-click="toggleSection('equity')">
+        <div class="rs-accordion-title-wrap">
+          <span class="rs-accordion-chevron" ng-class="{'is-expanded': sections.equity}">▸</span>
+          <span class="rs-accordion-title" style="color: #ffaa00;">{{t('sectionEquity')}}</span>
+        </div>
+        <button type="button" class="rs-btn-reset" ng-click="$event.stopPropagation(); resetSection('equity')" title="{{t('resetWord')}}">{{t('reset')}}</button>
+      </div>
+      <div class="rs-accordion-body" ng-show="sections.equity">
+        <!-- Surface Profile Selector Bar (Custom Dropdown + Activity Toggle) -->
+        <div class="rs-surface-select-bar">
+          <div class="rs-dropdown-backdrop" ng-if="isSurfaceDropdownOpen" ng-click="closeSurfaceDropdown()"></div>
+
+          <div class="rs-surface-select-wrap">
+            <span class="rs-surface-select-label">{{t('surfaceType')}}:</span>
+            <div class="rs-surface-dropdown-trigger" ng-click="toggleSurfaceDropdown($event)">
+              <span class="rs-surface-active-label">
+                {{activeSurfaceProfile === 'sand' ? ('🏜️ ' + t('profileSand')) : ('🛣️ ' + t('profileAsphalt'))}}
+              </span>
+              <span class="rs-surface-chevron">{{isSurfaceDropdownOpen ? '▲' : '▼'}}</span>
+            </div>
+
+            <!-- Custom Floating Dropdown Menu -->
+            <div class="rs-surface-dropdown-menu" ng-if="isSurfaceDropdownOpen">
+              <div class="rs-surface-item" ng-class="{'is-active': activeSurfaceProfile === 'asphalt'}"
+                   ng-click="selectSurfaceProfile('asphalt')">
+                <span class="rs-surface-item-name">🛣️ {{t('profileAsphalt')}}</span>
+              </div>
+              <div class="rs-surface-item" ng-class="{'is-active': activeSurfaceProfile === 'sand'}"
+                   ng-click="selectSurfaceProfile('sand')">
+                <span class="rs-surface-item-name">🏜️ {{t('profileSand')}}</span>
+              </div>
+            </div>
+          </div>
+
+          <button type="button" class="rs-toggle-chip"
+                  ng-class="{'is-on': isCurrentSurfaceActive(), 'is-off': !isCurrentSurfaceActive()}"
+                  ng-click="toggleCurrentSurfaceActivity()"
+                  title="{{isCurrentSurfaceActive() ? t('chipOnTip') : t('chipOffTip')}}">
+            {{isCurrentSurfaceActive() ? t('chipOn') : t('chipOff')}}
+          </button>
+        </div>
+
+        <!-- Surface Description Note -->
+        <div class="rs-surface-note" ng-show="activeSurfaceProfile === 'asphalt'">
+          {{t('profileAsphaltDesc')}}
+        </div>
+        <div class="rs-surface-note" ng-show="activeSurfaceProfile === 'sand'">
+          {{t('profileSandDesc')}}
+        </div>
+
+        <!-- Asphalt Controls (Thermal Rubber Pyrolysis & Interactive Bézier Onset) -->
+        <div ng-show="activeSurfaceProfile === 'asphalt'">
+        <!-- Interactive Thermal Smoke Onset S-Curve (Bézier) with P0 Onset Handle -->
+        <div class="rs-bezier-card card-equity-bezier">
+          <div class="rs-bezier-header" ng-click="toggleSmokeOnsetBezierEditor()">
+            <div class="rs-bezier-title-wrap">
+              <span class="rs-accordion-chevron" ng-class="{'is-expanded': showSmokeOnsetBezierEditor}">▸</span>
+              <span class="rs-bezier-title" style="color: #ffaa00;">📈 {{t('smokeOnsetBezier')}}</span>
+            </div>
+            <span class="rs-tip-toggle" ng-click="$event.stopPropagation(); toggleTip('smokeOnsetBezier')">?</span>
+          </div>
+          <div ng-show="activeTip === 'smokeOnsetBezier'" class="rs-tip-box">
+            <b style="color: #ffaa00;">{{t('smokeOnsetBezier')}}:</b> {{t('smokeOnsetBezierTip')}}
+          </div>
+          <div class="rs-bezier-body" ng-show="showSmokeOnsetBezierEditor">
+            <!-- SVG Interactive Graph with P0 (Golden Handle: Start Temp & Initial Haze) -->
+            <div class="rs-bezier-graph-wrap">
+              <svg class="rs-bezier-svg" viewBox="0 0 250 160"
+                   ng-mousemove="onDragSmokeOnsetBezier($event)"
+                   ng-mouseup="stopDragSmokeOnsetBezier()">
+                <!-- Grid background: X from 30 to 230 (width 200), Y from 20 to 120 (height 100) -->
+                <rect x="30" y="20" width="200" height="100" fill="#0d1117" stroke="#21262d" stroke-width="1" rx="4" />
+                
+                <!-- Enhanced contrast linear temperature background guide line -->
+                <line x1="30" y1="120" x2="230" y2="20" stroke="rgba(255, 200, 80, 0.55)" stroke-dasharray="3,3" stroke-width="1.5" />
+                
+                <!-- Vertical temperature interval grid lines & ticks -->
+                <line x1="30" y1="20" x2="30" y2="120" stroke="#1f2937" stroke-width="1" />
+                <line x1="80" y1="20" x2="80" y2="120" stroke="rgba(255, 255, 255, 0.08)" stroke-dasharray="2,2" />
+                <line x1="130" y1="20" x2="130" y2="120" stroke="rgba(255, 200, 80, 0.25)" stroke-dasharray="2,2" />
+                <line x1="180" y1="20" x2="180" y2="120" stroke="rgba(255, 255, 255, 0.08)" stroke-dasharray="2,2" />
+                <line x1="230" y1="20" x2="230" y2="120" stroke="#1f2937" stroke-width="1" />
+                
+                <!-- Clean spaced temperature tick labels along X axis -->
+                <text x="30" y="132" fill="#8b949e" font-size="8" font-family="monospace" text-anchor="middle">40°C</text>
+                <text x="80" y="132" fill="#8b949e" font-size="8" font-family="monospace" text-anchor="middle">85°C</text>
+                <text x="130" y="132" fill="#ffaa00" font-size="8" font-family="monospace" text-anchor="middle">130°C</text>
+                <text x="180" y="132" fill="#8b949e" font-size="8" font-family="monospace" text-anchor="middle">175°C</text>
+                <text x="230" y="132" fill="#8b949e" font-size="8" font-family="monospace" text-anchor="middle">220°C</text>
+                
+                <!-- Explicit Axis Labels -->
+                <text x="130" y="148" fill="#a0aec0" font-size="8.5" font-family="sans-serif" font-weight="bold" text-anchor="middle">{{t('bezierAxisTemp')}}</text>
+                <text x="10" y="70" fill="#a0aec0" font-size="8.5" font-family="sans-serif" font-weight="bold" text-anchor="middle" transform="rotate(-90 10,70)">{{t('bezierAxisDensity')}}</text>
+                
+                <!-- Horizontal mid grid line -->
+                <line x1="30" y1="70" x2="230" y2="70" stroke="#1f2937" stroke-dasharray="3,3" />
+
+                <!-- Tangent Lines -->
+                <line ng-attr-x1="{{getBezierP0X()}}" ng-attr-y1="{{getBezierP0Y()}}"
+                      ng-attr-x2="{{getBezierP1X()}}" ng-attr-y2="{{getBezierP1Y()}}"
+                      stroke="rgba(0, 229, 255, 0.45)" stroke-dasharray="2,2" stroke-width="1.5" />
+                <line ng-attr-x1="{{getBezierP3X()}}" ng-attr-y1="{{getBezierP3Y()}}"
+                      ng-attr-x2="{{getBezierP2X()}}" ng-attr-y2="{{getBezierP2Y()}}"
+                      stroke="rgba(255, 170, 0, 0.45)" stroke-dasharray="2,2" stroke-width="1.5" />
+
+                <!-- Cubic Bezier Path connecting P0 -> P1 -> P2 -> P3(230, 20) -->
+                <path ng-attr-d="M {{getBezierP0X()}} {{getBezierP0Y()}} C {{getBezierP1X()}} {{getBezierP1Y()}}, {{getBezierP2X()}} {{getBezierP2Y()}}, {{getBezierP3X()}} {{getBezierP3Y()}}"
+                      fill="none" stroke="#ffaa00" stroke-width="2.5" />
+
+                <!-- Endpoint Dot P3 (Fixed 100% Saturation at 220°C) -->
+                <!-- Cyan Handle P3 (Interactive Terminal Point: End Temp & Max Saturation) -->
+                <circle ng-attr-cx="{{getBezierP3X()}}"
+                        ng-attr-cy="{{getBezierP3Y()}}"
+                        r="8" fill="#00e5ff" stroke="#ffffff" stroke-width="2.5"
+                        class="rs-bezier-handle rs-handle-p3"
+                        ng-mousedown="startDragSmokeOnsetBezier(3, $event)" />
+                <text ng-attr-x="{{getBezierP3X()}}" ng-attr-y="{{getBezierP3Y() - 10}}"
+                      fill="#00e5ff" font-size="8.5" font-family="monospace" font-weight="bold" text-anchor="middle">
+                  {{smokeOnsetBezier.x3 | number:0}}°C<tspan ng-if="smokeOnsetBezier.y3 < 0.995"> / {{(smokeOnsetBezier.y3 * 100) | number:0}}%</tspan>
+                </text>
+
+                <!-- Golden Handle P0 (Interactive Onset Point: Temp Start & Initial Haze) -->
+                <circle ng-attr-cx="{{getBezierP0X()}}"
+                        ng-attr-cy="{{getBezierP0Y()}}"
+                        r="8" fill="#ffd700" stroke="#ffffff" stroke-width="2.5"
+                        class="rs-bezier-handle rs-handle-p0"
+                        ng-mousedown="startDragSmokeOnsetBezier(0, $event)" />
+                <text ng-attr-x="{{getBezierP0X()}}" ng-attr-y="{{getBezierP0Y() - 10}}"
+                      fill="#ffd700" font-size="8.5" font-family="monospace" font-weight="bold" text-anchor="middle">
+                  {{smokeOnsetBezier.x0 | number:0}}°C<tspan ng-if="smokeOnsetBezier.y0 > 0.005"> / {{(smokeOnsetBezier.y0 * 100) | number:0}}%</tspan>
+                </text>
+
+                <!-- Control Handle P1 (Cyan) -->
+                <circle ng-attr-cx="{{getBezierP1X()}}"
+                        ng-attr-cy="{{getBezierP1Y()}}"
+                        r="7" fill="#00e5ff" stroke="#ffffff" stroke-width="2"
+                        class="rs-bezier-handle"
+                        ng-mousedown="startDragSmokeOnsetBezier(1, $event)" />
+
+                <!-- Control Handle P2 (Amber) -->
+                <circle ng-attr-cx="{{getBezierP2X()}}"
+                        ng-attr-cy="{{getBezierP2Y()}}"
+                        r="7" fill="#ffaa00" stroke="#ffffff" stroke-width="2"
+                        class="rs-bezier-handle"
+                        ng-mousedown="startDragSmokeOnsetBezier(2, $event)" />
+
+                <!-- Percentage labels -->
+                <text x="24" y="24" fill="#8b949e" font-size="8.5" font-family="monospace" text-anchor="end">100%</text>
+                <text x="24" y="124" fill="#8b949e" font-size="8.5" font-family="monospace" text-anchor="end">0%</text>
+              </svg>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- 5. Hot-Tire Residual Smoke Decay S-Bézier Editor -->
+        <div class="rs-bezier-card">
+          <div class="rs-bezier-header" ng-click="toggleDecayBezierEditor()">
+            <div class="rs-bezier-title-wrap">
+              <span class="rs-accordion-chevron" ng-class="{'is-expanded': showDecayBezierEditor}">▸</span>
+              <span class="rs-bezier-title">∿ {{t('smokeDecayBezier')}}</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('smokeDecay'), 'is-off': !isParamEnabled('smokeDecay')}"
+                      ng-click="$event.stopPropagation(); toggleParam('smokeDecay', 0.0)" title="{{isParamEnabled('smokeDecay') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('smokeDecay') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{smokeDecayBezier.duration | number:1}}s</span>
+              <span class="rs-tip-toggle" ng-click="$event.stopPropagation(); toggleTip('smokeDecay')">?</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'smokeDecay'" class="rs-tip-box">
+            <b style="color: #ffaa00;">{{t('smokeDecay')}}:</b> {{t('smokeDecayTip')}}
+          </div>
+          <div class="rs-bezier-body" ng-show="showDecayBezierEditor">
+            <!-- SVG Interactive Decay Graph -->
+            <div class="rs-bezier-graph-wrap">
+              <svg class="rs-bezier-svg" viewBox="0 0 250 160"
+                   ng-mousemove="onDragSmokeDecayBezier($event)"
+                   ng-mouseup="stopDragSmokeDecayBezier()">
+                <!-- Grid background -->
+                <rect x="30" y="20" width="200" height="100" fill="#0d1117" stroke="#21262d" stroke-width="1" rx="4" />
+                <line x1="30" y1="70" x2="230" y2="70" stroke="#1f2937" stroke-dasharray="3,3" />
+                <!-- Vertical grid lines for seconds (1s, 2s, 3s, 4s, 5s) -->
+                <line x1="70" y1="20" x2="70" y2="120" stroke="#161b22" stroke-dasharray="2,2" />
+                <line x1="110" y1="20" x2="110" y2="120" stroke="#161b22" stroke-dasharray="2,2" />
+                <line x1="150" y1="20" x2="150" y2="120" stroke="#161b22" stroke-dasharray="2,2" />
+                <line x1="190" y1="20" x2="190" y2="120" stroke="#161b22" stroke-dasharray="2,2" />
+                <line x1="230" y1="20" x2="230" y2="120" stroke="#1f2937" stroke-dasharray="3,3" />
+
+                <!-- Explicit Axis Labels -->
+                <text x="130" y="148" fill="#a0aec0" font-size="8.5" font-family="sans-serif" font-weight="bold" text-anchor="middle">{{t('bezierAxisDecayTime')}}</text>
+                <text x="10" y="70" fill="#a0aec0" font-size="8.5" font-family="sans-serif" font-weight="bold" text-anchor="middle" transform="rotate(-90 10,70)">{{t('bezierAxisDecayDensity')}}</text>
+
+                <!-- Tangent Lines -->
+                <line x1="30" ng-attr-y1="{{getDecayP0Y()}}" ng-attr-x2="{{getDecayP1X()}}" ng-attr-y2="{{getDecayP1Y()}}"
+                      stroke="rgba(0, 229, 255, 0.45)" stroke-dasharray="2,2" stroke-width="1.5" />
+                <line ng-attr-x1="{{getDecayP3X()}}" y1="120" ng-attr-x2="{{getDecayP2X()}}" ng-attr-y2="{{getDecayP2Y()}}"
+                      stroke="rgba(255, 170, 0, 0.45)" stroke-dasharray="2,2" stroke-width="1.5" />
+
+                <!-- Cubic Bézier Path from (30, getDecayP0Y()) down to (P3.x, 120) -->
+                <path ng-attr-d="M 30 {{getDecayP0Y()}} C {{getDecayP1X()}} {{getDecayP1Y()}}, {{getDecayP2X()}} {{getDecayP2Y()}}, {{getDecayP3X()}} 120"
+                      fill="none" stroke="#ffaa00" stroke-width="2.5" />
+
+                <!-- Draggable Startpoint P0 (Golden Handle: Initial Residual Density 0%..100% along Y axis) -->
+                <circle cx="30" ng-attr-cy="{{getDecayP0Y()}}"
+                        r="8" fill="#ffd700" stroke="#ffffff" stroke-width="2.5"
+                        class="rs-bezier-handle rs-handle-p0"
+                        ng-mousedown="startDragSmokeDecayBezier(0, $event)" />
+                <text x="38" ng-attr-y="{{getDecayP0Y() - 8}}"
+                      fill="#ffd700" font-size="8.5" font-family="monospace" font-weight="bold" text-anchor="start">
+                  {{(smokeDecayBezier.y0 * 100) | number:0}}%
+                </text>
+
+                <!-- Draggable Endpoint P3 (Cyan Handle: Duration in seconds along bottom axis) -->
+                <circle ng-attr-cx="{{getDecayP3X()}}" cy="120"
+                        r="8" fill="#00e5ff" stroke="#ffffff" stroke-width="2.5"
+                        class="rs-bezier-handle rs-handle-p3"
+                        ng-mousedown="startDragSmokeDecayBezier(3, $event)" />
+                <text ng-attr-x="{{getDecayP3X()}}" y="112"
+                      fill="#00e5ff" font-size="8.5" font-family="monospace" font-weight="bold" text-anchor="middle">
+                  {{smokeDecayBezier.duration | number:1}}s
+                </text>
+
+                <!-- Control Handle P1 (Cyan) -->
+                <circle ng-attr-cx="{{getDecayP1X()}}"
+                        ng-attr-cy="{{getDecayP1Y()}}"
+                        r="7" fill="#00e5ff" stroke="#ffffff" stroke-width="2"
+                        class="rs-bezier-handle"
+                        ng-mousedown="startDragSmokeDecayBezier(1, $event)" />
+
+                <!-- Control Handle P2 (Amber) -->
+                <circle ng-attr-cx="{{getDecayP2X()}}"
+                        ng-attr-cy="{{getDecayP2Y()}}"
+                        r="7" fill="#ffaa00" stroke="#ffffff" stroke-width="2"
+                        class="rs-bezier-handle"
+                        ng-mousedown="startDragSmokeDecayBezier(2, $event)" />
+
+                <!-- Percentage labels on Y axis -->
+                <text x="24" y="24" fill="#8b949e" font-size="8.5" font-family="monospace" text-anchor="end">100%</text>
+                <text x="24" y="124" fill="#8b949e" font-size="8.5" font-family="monospace" text-anchor="end">0%</text>
+
+                <!-- Seconds tick labels along X axis -->
+                <text x="30" y="133" fill="#6e7681" font-size="7.5" font-family="monospace" text-anchor="middle">0s</text>
+                <text x="70" y="133" fill="#6e7681" font-size="7.5" font-family="monospace" text-anchor="middle">1s</text>
+                <text x="110" y="133" fill="#6e7681" font-size="7.5" font-family="monospace" text-anchor="middle">2s</text>
+                <text x="150" y="133" fill="#6e7681" font-size="7.5" font-family="monospace" text-anchor="middle">3s</text>
+                <text x="190" y="133" fill="#6e7681" font-size="7.5" font-family="monospace" text-anchor="middle">4s</text>
+                <text x="230" y="133" fill="#6e7681" font-size="7.5" font-family="monospace" text-anchor="middle">5s</text>
+              </svg>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <!-- Sand Controls (Kinematic Mineral Dust) -->
+        <div ng-show="activeSurfaceProfile === 'sand'">
+          <!-- dustColor: Sand & Mineral Dust Color Picker -->
+          <div class="rs-slider-item" style="border-bottom: 1px solid rgba(229, 193, 88, 0.2); padding-bottom: 6px; margin-bottom: 6px;">
+            <div class="rs-slider-header">
+              <div class="rs-slider-label-wrap">
+                <span class="rs-slider-label" style="color: #e5c158; font-weight: bold;">{{t('dustColor')}}</span>
+                <span ng-click="toggleTip('dustColor')" ng-mouseenter="showTip('dustColor')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+              </div>
+              <div class="rs-slider-actions">
+                <button type="button" class="rs-btn-reset-small" ng-click="resetDustColor()" title="{{t('dustColorDefaultBtn')}}">↺</button>
+                <button type="button" class="rs-color-swatch-btn" style="border-color: rgba(229, 193, 88, 0.4);" ng-click="openColorPicker('dustColor')" title="{{t('dustColorPickerTitle')}}">
+                  <span class="rs-color-swatch-box" ng-style="{'background-color': getDustColorCss()}"></span>
+                  <span class="rs-color-swatch-hex">{{getDustColorHex()}}</span>
+                </button>
+              </div>
+            </div>
+            <div ng-show="activeTip === 'dustColor'" class="rs-tip-box">
+              {{t('dustColorTip')}}
+            </div>
+          </div>
+          <!-- 1. Sand Dust Density -->
+          <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('sandDustScale')}">
+            <div class="rs-slider-header">
+              <div class="rs-slider-label-wrap">
+                <span class="rs-slider-label">{{t('sandDustScale')}}</span>
+                <span ng-click="toggleTip('sandDustScale')" ng-mouseenter="showTip('sandDustScale')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+              </div>
+              <div class="rs-slider-actions">
+                <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('sandDustScale'), 'is-off': !isParamEnabled('sandDustScale')}"
+                        ng-click="toggleParam('sandDustScale', 0.0)" title="{{isParamEnabled('sandDustScale') ? t('chipOnTip') : t('chipOffTip')}}">
+                  {{isParamEnabled('sandDustScale') ? t('chipOn') : t('chipOff')}}
+                </button>
+                <span class="rs-slider-val">{{sandDustScale | number:2}}x</span>
+              </div>
+            </div>
+            <div ng-show="activeTip === 'sandDustScale'" class="rs-tip-box">
+              <b style="color: #e5c158;">{{t('sandDustScale')}}:</b> {{t('sandDustScaleTip')}}
+            </div>
+            <input type="range" min="0.0" max="3.0" step="0.05" ng-model="sandDustScale"
+                   ng-change="onPhysicsChange('sandDustScale', sandDustScale)" class="rs-range" aria-label="Sand dust plume density">
+            <div class="rs-slider-limits">
+              <span>{{t('sandDustScaleMin')}}</span>
+              <span class="rs-limit-default" ng-click="resetParam('sandDustScale', $event)" title="{{t('resetWord')}}">{{t('sandDustScaleDef')}}</span>
+              <span>{{t('sandDustScaleMax')}}</span>
+            </div>
+          </div>
+
+          <!-- 2. Sand Shear Sensitivity -->
+          <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('sandDustSens')}">
+            <div class="rs-slider-header">
+              <div class="rs-slider-label-wrap">
+                <span class="rs-slider-label">{{t('sandDustSens')}}</span>
+                <span ng-click="toggleTip('sandDustSens')" ng-mouseenter="showTip('sandDustSens')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+              </div>
+              <div class="rs-slider-actions">
+                <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('sandDustSens'), 'is-off': !isParamEnabled('sandDustSens')}"
+                        ng-click="toggleParam('sandDustSens', 0.05)" title="{{isParamEnabled('sandDustSens') ? t('chipOnTip') : t('chipOffTip')}}">
+                  {{isParamEnabled('sandDustSens') ? t('chipOn') : t('chipOff')}}
+                </button>
+                <span class="rs-slider-val">{{sandDustSens | number:2}}x</span>
+              </div>
+            </div>
+            <div ng-show="activeTip === 'sandDustSens'" class="rs-tip-box">
+              <b style="color: #e5c158;">{{t('sandDustSens')}}:</b> {{t('sandDustSensTip')}}
+            </div>
+            <input type="range" min="0.05" max="3.0" step="0.05" ng-model="sandDustSens"
+                   ng-change="onPhysicsChange('sandDustSens', sandDustSens)" class="rs-range" aria-label="Sand shear sensitivity">
+            <div class="rs-slider-limits">
+              <span>{{t('sandDustSensMin')}}</span>
+              <span class="rs-limit-default" ng-click="resetParam('sandDustSens', $event)" title="{{t('resetWord')}}">{{t('sandDustSensDef')}}</span>
+              <span>{{t('sandDustSensMax')}}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 3: Wheel Smoke Group (Collapsible) -->
+    <div class="rs-accordion-card card-orange">
+      <div class="rs-accordion-header" ng-click="toggleSection('wheel')">
+        <div class="rs-accordion-title-wrap">
+          <span class="rs-accordion-chevron" ng-class="{'is-expanded': sections.wheel}">▸</span>
+          <span class="rs-accordion-title" style="color: #ff9900;">{{t('sectionWheel')}}</span>
+        </div>
+        <button type="button" class="rs-btn-reset" ng-click="$event.stopPropagation(); resetSection('wheel')" title="{{t('resetWord')}}">{{t('reset')}}</button>
+      </div>
+      <div class="rs-accordion-body" ng-show="sections.wheel">
+        <!-- Tread Coupling -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('treadCoupling')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('treadCoupling')}}</span>
+              <span ng-click="toggleTip('treadCoupling')" ng-mouseenter="showTip('treadCoupling')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('treadCoupling'), 'is-off': !isParamEnabled('treadCoupling')}"
+                      ng-click="toggleParam('treadCoupling', 0.05)" title="{{isParamEnabled('treadCoupling') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('treadCoupling') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{treadCoupling | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'treadCoupling'" class="rs-tip-box">
+            {{t('treadCouplingTip')}}
+          </div>
+          <input type="range" min="0.05" max="1.0" step="0.01" ng-model="treadCoupling"
+                 ng-change="onPhysicsChange('treadCoupling', treadCoupling)" class="rs-range" aria-label="Tread air coupling">
+          <div class="rs-slider-limits">
+            <span>{{t('treadCoupMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('treadCoupling', $event)" title="{{t('resetWord')}}">{{t('treadCoupDef')}}</span>
+            <span>{{t('treadCoupMax')}}</span>
+          </div>
+        </div>
+
+        <!-- Edge Dispersion (Tread Edge Dispersion into Fog) -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('edgeDispersion')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('edgeDispersion')}}</span>
+              <span ng-click="toggleTip('edgeDispersion')" ng-mouseenter="showTip('edgeDispersion')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('edgeDispersion'), 'is-off': !isParamEnabled('edgeDispersion')}"
+                      ng-click="toggleParam('edgeDispersion', 0.05)" title="{{isParamEnabled('edgeDispersion') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('edgeDispersion') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{edgeDispersion | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'edgeDispersion'" class="rs-tip-box">
+            {{t('edgeDispersionTip')}}
+          </div>
+          <input type="range" min="0.05" max="2.5" step="0.05" ng-model="edgeDispersion"
+                 ng-change="onPhysicsChange('edgeDispersion', edgeDispersion)" class="rs-range" aria-label="Tread edge dispersion">
+          <div class="rs-slider-limits">
+            <span>{{t('edgeDispMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('edgeDispersion', $event)" title="{{t('resetWord')}}">{{t('edgeDispDef')}}</span>
+            <span>{{t('edgeDispMax')}}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section: Photorealism & Billow Optics Calibration (Collapsible) -->
+    <div class="rs-accordion-card card-optics">
+      <div class="rs-accordion-header" ng-click="toggleSection('optics')">
+        <div class="rs-accordion-title-wrap">
+          <span class="rs-accordion-chevron" ng-class="{'is-expanded': sections.optics}">▸</span>
+          <span class="rs-accordion-title" style="color: #00e676;">{{t('sectionOptics')}}</span>
+        </div>
+        <button type="button" class="rs-btn-reset" ng-click="$event.stopPropagation(); resetSection('optics')" title="{{t('resetWord')}}">{{t('reset')}}</button>
+      </div>
+      <div class="rs-accordion-body" ng-show="sections.optics">
+        <!-- smokeColor: Smoke Color & Photoshop-Style Palette (Asphalt Profile) -->
+        <div class="rs-slider-item" ng-show="activeSurfaceProfile !== 'sand'" style="border-bottom: 1px solid rgba(0, 230, 118, 0.15); padding-bottom: 6px; margin-bottom: 6px;">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label" style="color: #00e676; font-weight: bold;">{{t('smokeColor')}}</span>
+              <span ng-click="toggleTip('smokeColor')" ng-mouseenter="showTip('smokeColor')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-btn-reset-small" ng-click="resetSmokeColor()" title="{{t('smokeColorDefaultBtn')}}">↺</button>
+              <button type="button" class="rs-color-swatch-btn" ng-click="openColorPicker('smokeColor')" title="{{t('smokeColorPickerTitle')}}">
+                <span class="rs-color-swatch-box" ng-style="{'background-color': getSmokeColorCss()}"></span>
+                <span class="rs-color-swatch-hex">{{getSmokeColorHex()}}</span>
+              </button>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'smokeColor'" class="rs-tip-box">
+            {{t('smokeColorTip')}}
+          </div>
+        </div>
+        <!-- dustColor: Sand & Mineral Dust Color Picker (Sand Profile) -->
+        <div class="rs-slider-item" ng-show="activeSurfaceProfile === 'sand'" style="border-bottom: 1px solid rgba(229, 193, 88, 0.2); padding-bottom: 6px; margin-bottom: 6px;">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label" style="color: #e5c158; font-weight: bold;">{{t('dustColor')}}</span>
+              <span ng-click="toggleTip('dustColor')" ng-mouseenter="showTip('dustColor')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-btn-reset-small" ng-click="resetDustColor()" title="{{t('dustColorDefaultBtn')}}">↺</button>
+              <button type="button" class="rs-color-swatch-btn" style="border-color: rgba(229, 193, 88, 0.4);" ng-click="openColorPicker('dustColor')" title="{{t('dustColorPickerTitle')}}">
+                <span class="rs-color-swatch-box" ng-style="{'background-color': getDustColorCss()}"></span>
+                <span class="rs-color-swatch-hex">{{getDustColorHex()}}</span>
+              </button>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'dustColor'" class="rs-tip-box">
+            {{t('dustColorTip')}}
+          </div>
+        </div>
+        <!-- hazeNormals: 3D Billow Normals -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('hazeNormals')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('hazeNormals')}}</span>
+              <span ng-click="toggleTip('hazeNormals')" ng-mouseenter="showTip('hazeNormals')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('hazeNormals'), 'is-off': !isParamEnabled('hazeNormals')}"
+                      ng-click="toggleParam('hazeNormals', 0.00)" title="{{isParamEnabled('hazeNormals') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('hazeNormals') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{hazeNormals | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'hazeNormals'" class="rs-tip-box">
+            {{t('hazeNormalsTip')}}
+          </div>
+          <input type="range" min="0.0" max="2.5" step="0.05" ng-model="hazeNormals"
+                 ng-change="onPhysicsChange('hazeNormals', hazeNormals)" class="rs-range" aria-label="Billow 3D Normals">
+          <div class="rs-slider-limits">
+            <span>{{t('hazeNormalsMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('hazeNormals', $event)" title="{{t('resetWord')}}">{{t('hazeNormalsDef')}}</span>
+            <span>{{t('hazeNormalsMax')}}</span>
+          </div>
+        </div>
+
+        <!-- creviceShadow: Crevice Shadows & Contrast -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('creviceShadow')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('creviceShadow')}}</span>
+              <span ng-click="toggleTip('creviceShadow')" ng-mouseenter="showTip('creviceShadow')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('creviceShadow'), 'is-off': !isParamEnabled('creviceShadow')}"
+                      ng-click="toggleParam('creviceShadow', 0.00)" title="{{isParamEnabled('creviceShadow') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('creviceShadow') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{creviceShadow | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'creviceShadow'" class="rs-tip-box">
+            {{t('creviceShadowTip')}}
+          </div>
+          <input type="range" min="0.0" max="2.5" step="0.05" ng-model="creviceShadow"
+                 ng-change="onPhysicsChange('creviceShadow', creviceShadow)" class="rs-range" aria-label="Crevice Shadows & Contrast">
+          <div class="rs-slider-limits">
+            <span>{{t('creviceShadowMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('creviceShadow', $event)" title="{{t('resetWord')}}">{{t('creviceShadowDef')}}</span>
+            <span>{{t('creviceShadowMax')}}</span>
+          </div>
+        </div>
+
+        <!-- coreOpacity: Core Opacity S-Curve -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('coreOpacity')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('coreOpacity')}}</span>
+              <span ng-click="toggleTip('coreOpacity')" ng-mouseenter="showTip('coreOpacity')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('coreOpacity'), 'is-off': !isParamEnabled('coreOpacity')}"
+                      ng-click="toggleParam('coreOpacity', 0.00)" title="{{isParamEnabled('coreOpacity') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('coreOpacity') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{coreOpacity | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'coreOpacity'" class="rs-tip-box">
+            {{t('coreOpacityTip')}}
+          </div>
+          <input type="range" min="0.0" max="3.0" step="0.05" ng-model="coreOpacity"
+                 ng-change="onPhysicsChange('coreOpacity', coreOpacity)" class="rs-range" aria-label="Core Opacity S-Curve">
+          <div class="rs-slider-limits">
+            <span>{{t('coreOpacityMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('coreOpacity', $event)" title="{{t('resetWord')}}">{{t('coreOpacityDef')}}</span>
+            <span>{{t('coreOpacityMax')}}</span>
+          </div>
+        </div>
+
+        <!-- vorticityDetail: Micro-Vorticity Fold Texture -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('vorticityDetail')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('vorticityDetail')}}</span>
+              <span ng-click="toggleTip('vorticityDetail')" ng-mouseenter="showTip('vorticityDetail')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('vorticityDetail'), 'is-off': !isParamEnabled('vorticityDetail')}"
+                      ng-click="toggleParam('vorticityDetail', 0.00)" title="{{isParamEnabled('vorticityDetail') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('vorticityDetail') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{vorticityDetail | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'vorticityDetail'" class="rs-tip-box">
+            {{t('vorticityDetailTip')}}
+          </div>
+          <input type="range" min="0.0" max="2.5" step="0.05" ng-model="vorticityDetail"
+                 ng-change="onPhysicsChange('vorticityDetail', vorticityDetail)" class="rs-range" aria-label="Micro-Vorticity Fold Texture">
+          <div class="rs-slider-limits">
+            <span>{{t('vorticityDetailMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('vorticityDetail', $event)" title="{{t('resetWord')}}">{{t('vorticityDetailDef')}}</span>
+            <span>{{t('vorticityDetailMax')}}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 4: Physical Turbulence Group (Collapsible) -->
+    <div class="rs-accordion-card card-cyan">
+      <div class="rs-accordion-header" ng-click="toggleSection('turb')">
+        <div class="rs-accordion-title-wrap">
+          <span class="rs-accordion-chevron" ng-class="{'is-expanded': sections.turb}">▸</span>
+          <span class="rs-accordion-title" style="color: #00e5ff;">{{t('sectionTurb')}}</span>
+        </div>
+        <button type="button" class="rs-btn-reset" ng-click="$event.stopPropagation(); resetSection('turb')" title="{{t('resetWord')}}">{{t('reset')}}</button>
+      </div>
+      <div class="rs-accordion-body" ng-show="sections.turb">
+
+        <!-- turbTransition: Vortex Growth Distance (Meters) -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('turbTransition')}" style="border-bottom: 1px solid rgba(0, 229, 255, 0.15); padding-bottom: 6px; margin-bottom: 6px;">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label" style="color: #00e5ff; font-weight: bold;">{{t('turbTransition')}}</span>
+              <span ng-click="toggleTip('turbTransition')" ng-mouseenter="showTip('turbTransition')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('turbTransition'), 'is-off': !isParamEnabled('turbTransition')}"
+                      ng-click="toggleParam('turbTransition', 0.0)" title="{{isParamEnabled('turbTransition') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('turbTransition') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{turbTransition | number:1}}m</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'turbTransition'" class="rs-tip-box">
+            {{t('turbTransitionTip')}}
+          </div>
+          <input type="range" min="0.0" max="12.0" step="0.1" ng-model="turbTransition"
+                 ng-change="onPhysicsChange('turbTransition', turbTransition)" class="rs-range" aria-label="Vortex growth distance">
+          <div class="rs-slider-limits">
+            <span>{{t('turbTransMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('turbTransition', $event)" title="{{t('resetWord')}}">{{t('turbTransDef')}}</span>
+            <span>{{t('turbTransMax')}}</span>
+          </div>
+        </div>
+
+        <!-- turbRelax: Vortex Relaxation Time into Calm Fog (Seconds) -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('turbRelax')}" style="border-bottom: 1px solid rgba(0, 229, 255, 0.15); padding-bottom: 6px; margin-bottom: 6px;">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label" style="color: #00e5ff; font-weight: bold;">{{t('turbRelax')}}</span>
+              <span ng-click="toggleTip('turbRelax')" ng-mouseenter="showTip('turbRelax')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('turbRelax'), 'is-off': !isParamEnabled('turbRelax')}"
+                      ng-click="toggleParam('turbRelax', 20.0)" title="{{isParamEnabled('turbRelax') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('turbRelax') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{turbRelax | number:2}}s</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'turbRelax'" class="rs-tip-box">
+            {{t('turbRelaxTip')}}
+          </div>
+          <input type="range" min="0.5" max="20.0" step="0.1" ng-model="turbRelax"
+                 ng-change="onPhysicsChange('turbRelax', turbRelax)" class="rs-range" aria-label="Turbulence relaxation time">
+          <div class="rs-slider-limits">
+            <span>{{t('turbRelaxMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('turbRelax', $event)" title="{{t('resetWord')}}">{{t('turbRelaxDef')}}</span>
+            <span>{{t('turbRelaxMax')}}</span>
+          </div>
+        </div>
+
+        <!-- Subgroup 1: Macro-vorticity -->
+        <div style="background: rgba(255,255,255,0.02); border-left: 2px solid #00e5ff; padding: 3px 5px; border-radius: 2px; margin-bottom: 5px;">
+          <div style="font-size: 8.5px; font-weight: bold; color: #aaffee; margin-bottom: 2px;">
+            {{t('subgroupMacro')}}
+          </div>
+
+          <!-- turbScale1 -->
+          <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('turbScale1')}">
+            <div class="rs-slider-header">
+              <div class="rs-slider-label-wrap">
+                <span class="rs-slider-label">{{t('turbScale1')}}</span>
+                <span ng-click="toggleTip('turbScale1')" ng-mouseenter="showTip('turbScale1')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+              </div>
+              <div class="rs-slider-actions">
+                <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('turbScale1'), 'is-off': !isParamEnabled('turbScale1')}"
+                        ng-click="toggleParam('turbScale1', 0.20)" title="{{isParamEnabled('turbScale1') ? t('chipOnTip') : t('chipOffTip')}}">
+                  {{isParamEnabled('turbScale1') ? t('chipOn') : t('chipOff')}}
+                </button>
+                <span class="rs-slider-val">{{turbScale1 | number:2}}x</span>
+              </div>
+            </div>
+            <div ng-show="activeTip === 'turbScale1'" class="rs-tip-box">
+              {{t('turbScale1Tip')}}
+            </div>
+            <input type="range" min="0.2" max="2.5" step="0.05" ng-model="turbScale1"
+                   ng-change="onPhysicsChange('turbScale1', turbScale1)" class="rs-range" aria-label="Turbulence scale 1">
+            <div class="rs-slider-limits">
+              <span>{{t('turbScale1Min')}}</span>
+              <span class="rs-limit-default" ng-click="resetParam('turbScale1', $event)" title="{{t('resetWord')}}">{{t('turbScale1Def')}}</span>
+              <span>{{t('turbScale1Max')}}</span>
+            </div>
+          </div>
+
+          <!-- turbStrength1 -->
+          <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('turbStrength1')}">
+            <div class="rs-slider-header">
+              <div class="rs-slider-label-wrap">
+                <span class="rs-slider-label">{{t('turbStrength1')}}</span>
+                <span ng-click="toggleTip('turbStrength1')" ng-mouseenter="showTip('turbStrength1')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+              </div>
+              <div class="rs-slider-actions">
+                <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('turbStrength1'), 'is-off': !isParamEnabled('turbStrength1')}"
+                        ng-click="toggleParam('turbStrength1', 0.00)" title="{{isParamEnabled('turbStrength1') ? t('chipOnTip') : t('chipOffTip')}}">
+                  {{isParamEnabled('turbStrength1') ? t('chipOn') : t('chipOff')}}
+                </button>
+                <span class="rs-slider-val">{{turbStrength1 | number:2}}x</span>
+              </div>
+            </div>
+            <div ng-show="activeTip === 'turbStrength1'" class="rs-tip-box">
+              {{t('turbStrength1Tip')}}
+            </div>
+            <input type="range" min="0.0" max="3.0" step="0.05" ng-model="turbStrength1"
+                   ng-change="onPhysicsChange('turbStrength1', turbStrength1)" class="rs-range" aria-label="Turbulence strength 1">
+            <div class="rs-slider-limits">
+              <span>{{t('turbStr1Min')}}</span>
+              <span class="rs-limit-default" ng-click="resetParam('turbStrength1', $event)" title="{{t('resetWord')}}">{{t('turbStr1Def')}}</span>
+              <span>{{t('turbStr1Max')}}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subgroup 2: Micro-vorticity -->
+        <div style="background: rgba(255,255,255,0.02); border-left: 2px solid #ffaa00; padding: 3px 5px; border-radius: 2px; margin-bottom: 5px;">
+          <div style="font-size: 8.5px; font-weight: bold; color: #ffdd88; margin-bottom: 2px;">
+            {{t('subgroupMicro')}}
+          </div>
+
+          <!-- turbScale2 -->
+          <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('turbScale2')}">
+            <div class="rs-slider-header">
+              <div class="rs-slider-label-wrap">
+                <span class="rs-slider-label">{{t('turbScale2')}}</span>
+                <span ng-click="toggleTip('turbScale2')" ng-mouseenter="showTip('turbScale2')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+              </div>
+              <div class="rs-slider-actions">
+                <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('turbScale2'), 'is-off': !isParamEnabled('turbScale2')}"
+                        ng-click="toggleParam('turbScale2', 0.20)" title="{{isParamEnabled('turbScale2') ? t('chipOnTip') : t('chipOffTip')}}">
+                  {{isParamEnabled('turbScale2') ? t('chipOn') : t('chipOff')}}
+                </button>
+                <span class="rs-slider-val">{{turbScale2 | number:2}}x</span>
+              </div>
+            </div>
+            <div ng-show="activeTip === 'turbScale2'" class="rs-tip-box">
+              {{t('turbScale2Tip')}}
+            </div>
+            <input type="range" min="0.2" max="2.5" step="0.05" ng-model="turbScale2"
+                   ng-change="onPhysicsChange('turbScale2', turbScale2)" class="rs-range" aria-label="Turbulence scale 2">
+            <div class="rs-slider-limits">
+              <span>{{t('turbScale2Min')}}</span>
+              <span class="rs-limit-default" ng-click="resetParam('turbScale2', $event)" title="{{t('resetWord')}}">{{t('turbScale2Def')}}</span>
+              <span>{{t('turbScale2Max')}}</span>
+            </div>
+          </div>
+
+          <!-- turbStrength2 -->
+          <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('turbStrength2')}">
+            <div class="rs-slider-header">
+              <div class="rs-slider-label-wrap">
+                <span class="rs-slider-label">{{t('turbStrength2')}}</span>
+                <span ng-click="toggleTip('turbStrength2')" ng-mouseenter="showTip('turbStrength2')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+              </div>
+              <div class="rs-slider-actions">
+                <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('turbStrength2'), 'is-off': !isParamEnabled('turbStrength2')}"
+                        ng-click="toggleParam('turbStrength2', 0.00)" title="{{isParamEnabled('turbStrength2') ? t('chipOnTip') : t('chipOffTip')}}">
+                  {{isParamEnabled('turbStrength2') ? t('chipOn') : t('chipOff')}}
+                </button>
+                <span class="rs-slider-val">{{turbStrength2 | number:2}}x</span>
+              </div>
+            </div>
+            <div ng-show="activeTip === 'turbStrength2'" class="rs-tip-box">
+              {{t('turbStrength2Tip')}}
+            </div>
+            <input type="range" min="0.0" max="3.0" step="0.05" ng-model="turbStrength2"
+                   ng-change="onPhysicsChange('turbStrength2', turbStrength2)" class="rs-range" aria-label="Turbulence strength 2">
+            <div class="rs-slider-limits">
+              <span>{{t('turbStr2Min')}}</span>
+              <span class="rs-limit-default" ng-click="resetParam('turbStrength2', $event)" title="{{t('resetWord')}}">{{t('turbStr2Def')}}</span>
+              <span>{{t('turbStr2Max')}}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subgroup 3: Arch Helical Vorticity -->
+        <div style="background: rgba(255,255,255,0.02); border-left: 2px solid #e040fb; padding: 3px 5px; border-radius: 2px;">
+          <div style="font-size: 8.5px; font-weight: bold; color: #ea80fc; margin-bottom: 2px;">
+            {{t('subgroupArch')}}
+          </div>
+
+          <!-- turbArch -->
+          <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('turbArch')}">
+            <div class="rs-slider-header">
+              <div class="rs-slider-label-wrap">
+                <span class="rs-slider-label">{{t('turbArch')}}</span>
+                <span ng-click="toggleTip('turbArch')" ng-mouseenter="showTip('turbArch')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+              </div>
+              <div class="rs-slider-actions">
+                <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('turbArch'), 'is-off': !isParamEnabled('turbArch')}"
+                        ng-click="toggleParam('turbArch', 0.00)" title="{{isParamEnabled('turbArch') ? t('chipOnTip') : t('chipOffTip')}}">
+                  {{isParamEnabled('turbArch') ? t('chipOn') : t('chipOff')}}
+                </button>
+                <span class="rs-slider-val">{{turbArch | number:2}}x</span>
+              </div>
+            </div>
+            <div ng-show="activeTip === 'turbArch'" class="rs-tip-box">
+              {{t('turbArchTip')}}
+            </div>
+            <input type="range" min="0.0" max="8.0" step="0.05" ng-model="turbArch"
+                   ng-change="onPhysicsChange('turbArch', turbArch)" class="rs-range" aria-label="Arch rotation strength">
+            <div class="rs-slider-limits">
+              <span>{{t('turbArchMin')}}</span>
+              <span class="rs-limit-default" ng-click="resetParam('turbArch', $event)" title="{{t('resetWord')}}">{{t('turbArchDef')}}</span>
+              <span>{{t('turbArchMax')}}</span>
+            </div>
+          </div>
+
+          <!-- turbArchScale -->
+          <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('turbArchScale')}">
+            <div class="rs-slider-header">
+              <div class="rs-slider-label-wrap">
+                <span class="rs-slider-label">{{t('turbArchScale')}}</span>
+                <span ng-click="toggleTip('turbArchScale')" ng-mouseenter="showTip('turbArchScale')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+              </div>
+              <div class="rs-slider-actions">
+                <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('turbArchScale'), 'is-off': !isParamEnabled('turbArchScale')}"
+                        ng-click="toggleParam('turbArchScale', 0.20)" title="{{isParamEnabled('turbArchScale') ? t('chipOnTip') : t('chipOffTip')}}">
+                  {{isParamEnabled('turbArchScale') ? t('chipOn') : t('chipOff')}}
+                </button>
+                <span class="rs-slider-val">{{turbArchScale | number:2}}x</span>
+              </div>
+            </div>
+            <div ng-show="activeTip === 'turbArchScale'" class="rs-tip-box">
+              {{t('turbArchScaleTip')}}
+            </div>
+            <input type="range" min="0.2" max="3.0" step="0.05" ng-model="turbArchScale"
+                   ng-change="onPhysicsChange('turbArchScale', turbArchScale)" class="rs-range" aria-label="Arch vortex scale">
+            <div class="rs-slider-limits">
+              <span>{{t('turbArchScaleMin')}}</span>
+              <span class="rs-limit-default" ng-click="resetParam('turbArchScale', $event)" title="{{t('resetWord')}}">{{t('turbArchScaleDef')}}</span>
+              <span>{{t('turbArchScaleMax')}}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 5: Plume Dynamics & Lifetime Group (Collapsible) -->
+    <div class="rs-accordion-card card-gold">
+      <div class="rs-accordion-header" ng-click="toggleSection('trail')">
+        <div class="rs-accordion-title-wrap">
+          <span class="rs-accordion-chevron" ng-class="{'is-expanded': sections.trail}">▸</span>
+          <span class="rs-accordion-title" style="color: #ffbb33;">{{t('sectionTrail')}}</span>
+        </div>
+        <button type="button" class="rs-btn-reset" ng-click="$event.stopPropagation(); resetSection('trail')" title="{{t('resetWord')}}">{{t('reset')}}</button>
+      </div>
+      <div class="rs-accordion-body" ng-show="sections.trail">
+        <!-- 1. Core Lifetime -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('coreLifetime')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('coreLifetime')}}</span>
+              <span ng-click="toggleTip('coreLifetime')" ng-mouseenter="showTip('coreLifetime')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('coreLifetime'), 'is-off': !isParamEnabled('coreLifetime')}"
+                      ng-click="toggleParam('coreLifetime', 0.05)" title="{{isParamEnabled('coreLifetime') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('coreLifetime') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{coreLifetime | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'coreLifetime'" class="rs-tip-box">
+            {{t('coreLifetimeTip')}}
+          </div>
+          <input type="range" min="0.05" max="2.5" step="0.05" ng-model="coreLifetime"
+                 ng-change="onPhysicsChange('coreLifetime', coreLifetime)" class="rs-range" aria-label="Core plume lifetime">
+          <div class="rs-slider-limits">
+            <span>{{t('coreLifeMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('coreLifetime', $event)" title="{{t('resetWord')}}">{{t('coreLifeDef')}}</span>
+            <span>{{t('coreLifeMax')}}</span>
+          </div>
+        </div>
+
+        <!-- 2. Dispersion Rate -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('dispersionRate')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('dispersionRate')}}</span>
+              <span ng-click="toggleTip('dispersionRate')" ng-mouseenter="showTip('dispersionRate')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('dispersionRate'), 'is-off': !isParamEnabled('dispersionRate')}"
+                      ng-click="toggleParam('dispersionRate', 0.20)" title="{{isParamEnabled('dispersionRate') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('dispersionRate') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{dispersionRate | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'dispersionRate'" class="rs-tip-box">
+            {{t('dispersionRateTip')}}
+          </div>
+          <input type="range" min="0.2" max="3.0" step="0.05" ng-model="dispersionRate"
+                 ng-change="onPhysicsChange('dispersionRate', dispersionRate)" class="rs-range" aria-label="Dispersion rate">
+          <div class="rs-slider-limits">
+            <span>{{t('dispRateMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('dispersionRate', $event)" title="{{t('resetWord')}}">{{t('dispRateDef')}}</span>
+            <span>{{t('dispRateMax')}}</span>
+          </div>
+        </div>
+
+
+        <!-- 4. Underbody Ejection -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('underbodyEject')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('underbodyEject')}}</span>
+              <span ng-click="toggleTip('underbodyEject')" ng-mouseenter="showTip('underbodyEject')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('underbodyEject'), 'is-off': !isParamEnabled('underbodyEject')}"
+                      ng-click="toggleParam('underbodyEject', 0.0)" title="{{isParamEnabled('underbodyEject') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('underbodyEject') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{underbodyEject | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'underbodyEject'" class="rs-tip-box">
+            {{t('underbodyEjectTip')}}
+          </div>
+          <input type="range" min="0.0" max="3.0" step="0.05" ng-model="underbodyEject"
+                 ng-change="onPhysicsChange('underbodyEject', underbodyEject)" class="rs-range" aria-label="Underbody ejection force">
+          <div class="rs-slider-limits">
+            <span>{{t('underbodyEjectMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('underbodyEject', $event)" title="{{t('resetWord')}}">{{t('underbodyEjectDef')}}</span>
+            <span>{{t('underbodyEjectMax')}}</span>
+          </div>
+        </div>
+
+        <!-- 5. Wheel Arch Ejection -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('archEject')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('archEject')}}</span>
+              <span ng-click="toggleTip('archEject')" ng-mouseenter="showTip('archEject')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('archEject'), 'is-off': !isParamEnabled('archEject')}"
+                      ng-click="toggleParam('archEject', 0.0)" title="{{isParamEnabled('archEject') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('archEject') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{archEject | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'archEject'" class="rs-tip-box">
+            {{t('archEjectTip')}}
+          </div>
+          <input type="range" min="0.0" max="3.0" step="0.05" ng-model="archEject"
+                 ng-change="onPhysicsChange('archEject', archEject)" class="rs-range" aria-label="Wheel arch ejection air velocity">
+          <div class="rs-slider-limits">
+            <span>{{t('archEjectMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('archEject', $event)" title="{{t('resetWord')}}">{{t('archEjectDef')}}</span>
+            <span>{{t('archEjectMax')}}</span>
+          </div>
+        </div>
+
+        <!-- 6. Road Braking -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('roadDamping')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('roadDamping')}}</span>
+              <span ng-click="toggleTip('roadDamping')" ng-mouseenter="showTip('roadDamping')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('roadDamping'), 'is-off': !isParamEnabled('roadDamping')}"
+                      ng-click="toggleParam('roadDamping', 0.0)" title="{{isParamEnabled('roadDamping') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('roadDamping') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{roadDamping | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'roadDamping'" class="rs-tip-box">
+            {{t('roadDampingTip')}}
+          </div>
+          <input type="range" min="0.0" max="5.0" step="0.05" ng-model="roadDamping"
+                 ng-change="onPhysicsChange('roadDamping', roadDamping)" class="rs-range" aria-label="Road friction braking">
+          <div class="rs-slider-limits">
+            <span>{{t('roadDampMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('roadDamping', $event)" title="{{t('resetWord')}}">{{t('roadDampDef')}}</span>
+            <span>{{t('roadDampMax')}}</span>
+          </div>
+        </div>
+
+        <!-- 7. Air Drag / Deceleration -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('smokeDrag')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('smokeDrag')}}</span>
+              <span ng-click="toggleTip('smokeDrag')" ng-mouseenter="showTip('smokeDrag')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('smokeDrag'), 'is-off': !isParamEnabled('smokeDrag')}"
+                      ng-click="toggleParam('smokeDrag', 0.0)" title="{{isParamEnabled('smokeDrag') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('smokeDrag') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{smokeDrag | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'smokeDrag'" class="rs-tip-box">
+            {{t('smokeDragTip')}}
+          </div>
+          <input type="range" min="0.0" max="3.0" step="0.05" ng-model="smokeDrag"
+                 ng-change="onPhysicsChange('smokeDrag', smokeDrag)" class="rs-range" aria-label="Smoke atmospheric drag">
+          <div class="rs-slider-limits">
+            <span>{{t('smokeDragMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('smokeDrag', $event)" title="{{t('resetWord')}}">{{t('smokeDragDef')}}</span>
+            <span>{{t('smokeDragMax')}}</span>
+          </div>
+        </div>
+
+
+        <!-- 8. Thermal Buoyancy -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('thermalBuoyancy')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('thermalBuoyancy')}}</span>
+              <span ng-click="toggleTip('thermalBuoyancy')" ng-mouseenter="showTip('thermalBuoyancy')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('thermalBuoyancy'), 'is-off': !isParamEnabled('thermalBuoyancy')}"
+                      ng-click="toggleParam('thermalBuoyancy', 0.0)" title="{{isParamEnabled('thermalBuoyancy') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('thermalBuoyancy') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{thermalBuoyancy | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'thermalBuoyancy'" class="rs-tip-box">
+            {{t('thermalBuoyancyTip')}}
+          </div>
+          <input type="range" min="0.0" max="1.0" step="0.02" ng-model="thermalBuoyancy"
+                 ng-change="onPhysicsChange('thermalBuoyancy', thermalBuoyancy)" class="rs-range" aria-label="Thermal buoyancy lift">
+          <div class="rs-slider-limits">
+            <span>{{t('thermalBuoyMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('thermalBuoyancy', $event)" title="{{t('resetWord')}}">{{t('thermalBuoyDef')}}</span>
+            <span>{{t('thermalBuoyMax')}}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 6: Slipstream Aerodynamic Pocket & 3D Turbulence (Collapsible) -->
+    <div class="rs-accordion-card card-purple">
+      <div class="rs-accordion-header" ng-click="toggleSection('slipstream')">
+        <div class="rs-accordion-title-wrap">
+          <span class="rs-accordion-chevron" ng-class="{'is-expanded': sections.slipstream}">▸</span>
+          <span class="rs-accordion-title" style="color: #b388ff;">{{t('sectionSlipstream')}}</span>
+          <span class="rs-badge-beta">BETA</span>
+        </div>
+        <button type="button" class="rs-btn-reset" ng-click="$event.stopPropagation(); resetSection('slipstream')" title="{{t('resetWord')}}">{{t('reset')}}</button>
+      </div>
+      <div class="rs-accordion-body" ng-show="sections.slipstream">
+        <!-- Beta / Early Calibration Notice Banner -->
+        <div class="rs-slipstream-beta-banner">
+          <div class="rs-beta-banner-title">⚠️ {{t('slipstreamBetaTitle')}}</div>
+          <div class="rs-beta-banner-desc">{{t('slipstreamBetaDesc')}}</div>
+        </div>
+
+        <!-- 1. Slipstream Hold Strength -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('slipstream')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('slipstream')}}</span>
+              <span ng-click="toggleTip('slipstream')" ng-mouseenter="showTip('slipstream')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('slipstream'), 'is-off': !isParamEnabled('slipstream')}"
+                      ng-click="toggleParam('slipstream', 0.0)" title="{{isParamEnabled('slipstream') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('slipstream') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{slipstream | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'slipstream'" class="rs-tip-box">
+            {{t('slipstreamTip')}}
+          </div>
+          <input type="range" min="0.0" max="2.50" step="0.01" ng-model="slipstream"
+                 ng-change="onPhysicsChange('slipstream', slipstream)" class="rs-range" aria-label="Slipstream aerodynamic pocket hold">
+          <div class="rs-slider-limits">
+            <span>{{t('slipstreamMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('slipstream', $event)" title="{{t('resetWord')}}">{{t('slipstreamDef')}}</span>
+            <span>{{t('slipstreamMax')}}</span>
+          </div>
+        </div>
+
+        <!-- 2. 3D Curl Vortex Scale (Eddy Size) -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('slipstreamTurbScale')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('slipstreamTurbScale')}}</span>
+              <span ng-click="toggleTip('slipstreamTurbScale')" ng-mouseenter="showTip('slipstreamTurbScale')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('slipstreamTurbScale'), 'is-off': !isParamEnabled('slipstreamTurbScale')}"
+                      ng-click="toggleParam('slipstreamTurbScale', 0.20)" title="{{isParamEnabled('slipstreamTurbScale') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('slipstreamTurbScale') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{slipstreamTurbScale | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'slipstreamTurbScale'" class="rs-tip-box">
+            {{t('slipstreamTurbScaleTip')}}
+          </div>
+          <input type="range" min="0.20" max="3.00" step="0.05" ng-model="slipstreamTurbScale"
+                 ng-change="onPhysicsChange('slipstreamTurbScale', slipstreamTurbScale)" class="rs-range" aria-label="Slipstream 3D curl vortex scale">
+          <div class="rs-slider-limits">
+            <span>{{t('slipstreamTurbScaleMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('slipstreamTurbScale', $event)" title="{{t('resetWord')}}">{{t('slipstreamTurbScaleDef')}}</span>
+            <span>{{t('slipstreamTurbScaleMax')}}</span>
+          </div>
+        </div>
+
+        <!-- 3. 3D Curl Turbulence Strength -->
+        <div class="rs-slider-item" ng-class="{'is-bypassed': !isParamEnabled('slipstreamTurbStrength')}">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label">{{t('slipstreamTurbStrength')}}</span>
+              <span ng-click="toggleTip('slipstreamTurbStrength')" ng-mouseenter="showTip('slipstreamTurbStrength')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <div class="rs-slider-actions">
+              <button type="button" class="rs-toggle-chip" ng-class="{'is-on': isParamEnabled('slipstreamTurbStrength'), 'is-off': !isParamEnabled('slipstreamTurbStrength')}"
+                      ng-click="toggleParam('slipstreamTurbStrength', 0.0)" title="{{isParamEnabled('slipstreamTurbStrength') ? t('chipOnTip') : t('chipOffTip')}}">
+                {{isParamEnabled('slipstreamTurbStrength') ? t('chipOn') : t('chipOff')}}
+              </button>
+              <span class="rs-slider-val">{{slipstreamTurbStrength | number:2}}x</span>
+            </div>
+          </div>
+          <div ng-show="activeTip === 'slipstreamTurbStrength'" class="rs-tip-box">
+            {{t('slipstreamTurbStrengthTip')}}
+          </div>
+          <input type="range" min="0.0" max="3.00" step="0.05" ng-model="slipstreamTurbStrength"
+                 ng-change="onPhysicsChange('slipstreamTurbStrength', slipstreamTurbStrength)" class="rs-range" aria-label="Slipstream 3D curl turbulence strength">
+          <div class="rs-slider-limits">
+            <span>{{t('slipstreamTurbStrengthMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('slipstreamTurbStrength', $event)" title="{{t('resetWord')}}">{{t('slipstreamTurbStrengthDef')}}</span>
+            <span>{{t('slipstreamTurbStrengthMax')}}</span>
+          </div>
+        </div>
+
+        <!-- 4. Interactive Bézier S-Curve Editor Toggle & Panel (No preset buttons) -->
+        <div class="rs-bezier-card">
+          <div class="rs-bezier-header" ng-click="toggleBezierEditor()">
+            <div class="rs-bezier-title-wrap">
+              <span class="rs-accordion-chevron" ng-class="{'is-expanded': showBezierEditor}">▸</span>
+              <span class="rs-bezier-title">∿ {{t('slipstreamBezier')}}</span>
+            </div>
+            <span class="rs-tip-toggle" ng-click="$event.stopPropagation(); toggleTip('slipstreamBezier')">?</span>
+          </div>
+          <div ng-show="activeTip === 'slipstreamBezier'" class="rs-tip-box">
+            {{t('slipstreamBezierTip')}}
+          </div>
+          <div class="rs-bezier-body" ng-show="showBezierEditor">
+            <!-- SVG Interactive Graph -->
+            <div class="rs-bezier-graph-wrap">
+              <svg class="rs-bezier-svg" viewBox="0 0 250 160"
+                   ng-mousemove="onDragBezier($event)"
+                   ng-mouseup="stopDragBezier()">
+                <!-- Grid background -->
+                <rect x="30" y="20" width="200" height="100" fill="#0d1117" stroke="#21262d" stroke-width="1" rx="4" />
+                <line x1="30" y1="70" x2="230" y2="70" stroke="#1f2937" stroke-dasharray="3,3" />
+                <line x1="130" y1="20" x2="130" y2="120" stroke="#1f2937" stroke-dasharray="3,3" />
+                <line x1="30" y1="20" x2="230" y2="120" stroke="#161b22" stroke-width="1" />
+
+                <!-- Explicit Axis Labels -->
+                <text x="130" y="148" fill="#a0aec0" font-size="8.5" font-family="sans-serif" font-weight="bold" text-anchor="middle">{{t('bezierAxisSlipTime')}}</text>
+                <text x="10" y="70" fill="#a0aec0" font-size="8.5" font-family="sans-serif" font-weight="bold" text-anchor="middle" transform="rotate(-90 10,70)">{{t('bezierAxisSlipHold')}}</text>
+
+                <!-- Tangent Lines -->
+                <line x1="30" y1="20" ng-attr-x2="{{30 + 200 * slipstreamBezier.x1}}" ng-attr-y2="{{120 - 100 * slipstreamBezier.y1}}"
+                      stroke="rgba(0, 229, 255, 0.45)" stroke-dasharray="2,2" stroke-width="1.5" />
+                <line x1="230" y1="120" ng-attr-x2="{{30 + 200 * slipstreamBezier.x2}}" ng-attr-y2="{{120 - 100 * slipstreamBezier.y2}}"
+                      stroke="rgba(255, 170, 0, 0.45)" stroke-dasharray="2,2" stroke-width="1.5" />
+
+                <!-- Cubic Bézier Path -->
+                <path ng-attr-d="M 30 20 C {{30 + 200 * slipstreamBezier.x1}} {{120 - 100 * slipstreamBezier.y1}}, {{30 + 200 * slipstreamBezier.x2}} {{120 - 100 * slipstreamBezier.y2}}, 230 120"
+                      fill="none" stroke="#00e5ff" stroke-width="2.5" />
+
+                <!-- Endpoint Dots -->
+                <circle cx="30" cy="20" r="3.5" fill="#00e5ff" />
+                <circle cx="230" cy="120" r="3.5" fill="#ffaa00" />
+
+                <!-- Control Handle P1 (Cyan) -->
+                <circle ng-attr-cx="{{30 + 200 * slipstreamBezier.x1}}"
+                        ng-attr-cy="{{120 - 100 * slipstreamBezier.y1}}"
+                        r="7" fill="#00e5ff" stroke="#ffffff" stroke-width="2"
+                        class="rs-bezier-handle"
+                        ng-mousedown="startDragBezier(1, $event)" />
+
+                <!-- Control Handle P2 (Amber) -->
+                <circle ng-attr-cx="{{30 + 200 * slipstreamBezier.x2}}"
+                        ng-attr-cy="{{120 - 100 * slipstreamBezier.y2}}"
+                        r="7" fill="#ffaa00" stroke="#ffffff" stroke-width="2"
+                        class="rs-bezier-handle"
+                        ng-mousedown="startDragBezier(2, $event)" />
+
+                <!-- Percentage labels on Y axis -->
+                <text x="24" y="24" fill="#58a6ff" font-size="8.5" font-family="monospace" text-anchor="end">100%</text>
+                <text x="24" y="124" fill="#8b949e" font-size="8.5" font-family="monospace" text-anchor="end">0%</text>
+
+                <!-- Time progress labels along X axis -->
+                <text x="30" y="133" fill="#6e7681" font-size="7.5" font-family="monospace" text-anchor="middle">0%</text>
+                <text x="80" y="133" fill="#6e7681" font-size="7.5" font-family="monospace" text-anchor="middle">25%</text>
+                <text x="130" y="133" fill="#6e7681" font-size="7.5" font-family="monospace" text-anchor="middle">50%</text>
+                <text x="180" y="133" fill="#6e7681" font-size="7.5" font-family="monospace" text-anchor="middle">75%</text>
+                <text x="230" y="133" fill="#6e7681" font-size="7.5" font-family="monospace" text-anchor="middle">100%</text>
+              </svg>
+            </div>
+
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 7: Raymarch Quality & Voxel Grid (Collapsible, no A/B bypass chips) -->
+    <div class="rs-accordion-card">
+      <div class="rs-accordion-header" ng-click="toggleSection('grid')">
+        <div class="rs-accordion-title-wrap">
+          <span class="rs-accordion-chevron" ng-class="{'is-expanded': sections.grid}">▸</span>
+          <span class="rs-accordion-title" style="color: #00ff88;">{{t('sectionGrid')}}</span>
+        </div>
+        <button type="button" class="rs-btn-reset" ng-click="$event.stopPropagation(); resetSection('grid')" title="{{t('resetWord')}}">{{t('reset')}}</button>
+      </div>
+      <div class="rs-accordion-body" ng-show="sections.grid">
+        <!-- Raymarch Quality Slider -->
+        <div class="rs-slider-item">
+          <div class="rs-slider-header">
+            <span style="color: #ff9900;">{{t('raymarchQuality')}}</span>
+            <span class="rs-slider-val">{{simulationQuality | number:1}}x</span>
+          </div>
+          <input type="range" min="1.0" max="5.0" step="0.1" ng-model="simulationQuality"
+                 ng-change="onQualityChange(simulationQuality)" class="rs-range" aria-label="Raymarch quality">
+          <div class="rs-slider-limits">
+            <span>{{t('qualityMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('simulationQuality', $event)" title="{{t('resetWord')}}">{{t('qualityBal')}}</span>
+            <span>{{t('qualityMax')}}</span>
+          </div>
+        </div>
+
+        <!-- Real GPU Voxel Grid Slider -->
+        <div class="rs-slider-item">
+          <div class="rs-slider-header">
+            <span style="color: #00e5ff;">{{t('voxelSize')}}</span>
+            <span class="rs-slider-val">{{voxelMillimeters | number:0}} mm</span>
+          </div>
+          <input type="range" min="40" max="100" step="1" ng-model="voxelMillimeters"
+                 ng-change="onVoxelChange(voxelMillimeters)" class="rs-range" aria-label="Physical voxel size in millimeters">
+          <div class="rs-slider-limits">
+            <span>{{t('voxelMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('voxelMillimeters', $event)" title="{{t('resetWord')}}">{{t('voxelDrift')}}</span>
+            <span>{{t('voxelMax')}}</span>
+          </div>
+        </div>
+
+        <!-- Domain Size (Horizontal Simulation Box) Slider -->
+        <div class="rs-slider-item">
+          <div class="rs-slider-header">
+            <div class="rs-slider-label-wrap">
+              <span class="rs-slider-label" style="color: #00e5ff;">{{t('domainSize')}}</span>
+              <span ng-click="toggleTip('domainSize')" ng-mouseenter="showTip('domainSize')" ng-mouseleave="hideTip()" class="rs-tip-toggle">?</span>
+            </div>
+            <span class="rs-slider-val" ng-class="{'rs-domain-extreme-text': domainSize >= 60.0}" ng-style="{'color': domainSize >= 60.0 ? '#ff3333' : (isHighVoxelLoad() ? '#ffaa00' : '#00e5ff')}">{{domainSize | number:1}} m <span ng-if="domainSize >= 60.0">💀</span></span>
+          </div>
+          <div ng-show="activeTip === 'domainSize'" class="rs-tip-box">
+            {{t('domainSizeTip')}}
+          </div>
+          <input type="range" min="6.0" max="70.0" step="0.5" ng-model="domainSize"
+                 ng-change="onDomainSizeChange(domainSize)" class="rs-range" aria-label="Horizontal simulation box size in meters">
+          <!-- GPU Load Gradient Line with Warning Zones and Skull -->
+          <div class="rs-domain-scale-track" title="GPU Load Scale: Green (~10m) | Yellow (~20m) | Red (>30m) | Extreme Black (>60m)">
+            <div class="rs-domain-scale-gradient"></div>
+            <span class="rs-domain-skull" ng-class="{'rs-skull-active': domainSize >= 60.0}" title="GPU Extreme Load Zone (>60-70m) / Экстремальная зона нагрузки">💀</span>
+          </div>
+          <div class="rs-slider-limits">
+            <span>{{t('domainMin')}}</span>
+            <span class="rs-limit-default" ng-click="resetParam('domainSize', $event)" title="{{t('resetWord')}}">{{t('domainDef')}}</span>
+            <span ng-class="{'rs-domain-extreme-text': domainSize >= 60.0}">{{t('domainMax')}} <span style="font-size: 9px;">💀</span></span>
+          </div>
+          <!-- First-principles GPU high load warning strictly if > 5M voxels -->
+          <div class="rs-gpu-warn" ng-if="isHighVoxelLoad()">
+            {{t('gpuLoadWarn')}}{{getEstimatedGridVoxels() / 1000000 | number:1}}{{t('gpuLoadWarnSuffix')}}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer Quick Toggle & Controls (Pinned at bottom, only when expanded) -->
+  <div class="rs-footer" ng-show="!isCollapsed">
+    <span class="toggle-hint" style="font-size: 8px; color: #777;">{{t('toggleHint')}}</span>
+    <span style="font-size: 8px; color: #00e5ff; font-weight: bold;">{{domainX | number:1}}&times;{{domainY | number:1}}&times;{{domainZ | number:1}}{{lang === 'ru' ? 'м' : 'm'}} ({{gridWidth}}&times;{{gridHeight}}&times;{{gridDepth}})</span>
+  </div>
+  <!-- Photoshop-Style Color Picker Modal Dialog -->
+  <div class="rs-modal-overlay" ng-if="isColorPickerOpen" ng-click="closeColorPicker()">
+    <div class="rs-color-modal" ng-click="$event.stopPropagation()">
+      <div class="rs-color-modal-header">
+        <span class="rs-color-modal-title">{{getPickerModalTitle()}}</span>
+        <button type="button" class="rs-color-modal-close" ng-click="closeColorPicker()">✕</button>
+      </div>
+      <div class="rs-color-modal-body">
+        <!-- 2D Color Spectrum Canvas (Rainbow Hues horizontal, White-to-Black vertical) -->
+        <div class="rs-spectrum-wrap">
+          <canvas id="rs-spectrum-canvas" width="270" height="135" class="rs-spectrum-canvas"></canvas>
+          <div class="rs-color-crosshair" ng-style="{'left': pickerPointerX + '%', 'top': pickerPointerY + '%', 'display': showPointer ? 'block' : 'none'}"></div>
+        </div>
+
+        <!-- 1D Grayscale Bar Canvas (Black to White) -->
+        <div class="rs-gray-wrap">
+          <canvas id="rs-gray-canvas" width="270" height="18" class="rs-gray-canvas"></canvas>
+        </div>
+
+        <!-- Color Preview & Numeric Inputs -->
+        <div class="rs-color-modal-row">
+          <div class="rs-color-preview-group">
+            <div class="rs-color-preview-box" ng-style="{'background-color': getPickerCss()}" title="{{t('smokeColorNew')}}"></div>
+            <div class="rs-color-preview-old" ng-style="{'background-color': getInitialColorCss()}" ng-click="revertToInitialColor()" title="{{t('smokeColorCurrent')}}"></div>
+          </div>
+          <div class="rs-color-inputs-group">
+            <div class="rs-color-input-item">
+              <span class="rs-color-input-label">HEX</span>
+              <input type="text" class="rs-color-text-input rs-color-hex" ng-model="pickerHex" ng-change="onPickerHexChange()" maxlength="7">
+            </div>
+            <div class="rs-color-rgb-fields">
+              <div class="rs-color-input-item">
+                <span class="rs-color-input-label">R</span>
+                <input type="number" class="rs-color-text-input rs-color-num" min="0" max="255" ng-model="pickerR" ng-change="onPickerRgbChange()">
+              </div>
+              <div class="rs-color-input-item">
+                <span class="rs-color-input-label">G</span>
+                <input type="number" class="rs-color-text-input rs-color-num" min="0" max="255" ng-model="pickerG" ng-change="onPickerRgbChange()">
+              </div>
+              <div class="rs-color-input-item">
+                <span class="rs-color-input-label">B</span>
+                <input type="number" class="rs-color-text-input rs-color-num" min="0" max="255" ng-model="pickerB" ng-change="onPickerRgbChange()">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="rs-color-modal-actions">
+          <button type="button" class="rs-btn-picker-default" ng-click="setPickerDefault()">
+            {{t('colorDefaultBtn')}}
+          </button>
+          <div class="rs-color-modal-btn-group">
+            <button type="button" class="rs-btn-picker-cancel" ng-click="closeColorPicker()">
+              {{t('smokeColorCancelBtn')}}
+            </button>
+            <button type="button" class="rs-btn-picker-apply" ng-click="applyColorPicker()">
+              {{t('smokeColorApplyBtn')}}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>

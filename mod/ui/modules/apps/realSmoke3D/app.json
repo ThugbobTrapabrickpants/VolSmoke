@@ -1,0 +1,22 @@
+{
+  "domElement": "<real-smoke3-d-app></real-smoke3-d-app>",
+  "name": "VolSmoke Monitor",
+  "types": [
+    "ui.apps.categories.vehicle",
+    "ui.apps.categories.debug"
+  ],
+  "description": "Live tire thermodynamics and 3D volumetric smoke engine controls",
+  "css": {
+    "left": "0px",
+    "top": "0px",
+    "width": "280px",
+    "height": "auto",
+    "min-width": "220px",
+    "min-height": "36px"
+  },
+  "author": "VolSmoke contributors",
+  "version": "0.8.12.9",
+  "category": "Vehicle",
+  "isAuxiliary": false,
+  "interactive": "yes"
+}
